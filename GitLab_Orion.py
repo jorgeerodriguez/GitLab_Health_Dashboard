@@ -77,7 +77,7 @@ def build_health_snapshot(
             results_by_id[project.id] = future.result()
 
     raw_job_rows = [row for result in results_by_id.values() for row in result["raw_job_rows"]]
-    runner_rows = fetch_runner_metrics(gl, group, raw_job_rows)
+    runner_rows = fetch_runner_metrics(gl, group, group_projects, raw_job_rows, max_workers=max_workers)
 
     dataframes = build_snapshot_dataframes(group_projects, results_by_id, runner_rows, snapshot_at=now)
     return dataframes, now

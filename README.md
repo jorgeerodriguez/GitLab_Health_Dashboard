@@ -48,7 +48,11 @@ To create a token: on GitLab, go to **Avatar → Edit profile → Access Tokens*
 an expiration date, and the `read_api` scope (`read_repository` too if you'll
 need repo contents later). The token needs at least **Reporter** access on
 the group to list its runners; **Developer**+ gets you MR/merge-status
-detail. Copy the value — GitLab only shows it once.
+detail. Runner listing at the *project* level (needed to catch on-prem
+runners registered directly to a project rather than the group — see
+`runners.py`) requires **Maintainer**+ on that project; projects where the
+token falls short are skipped and counted in the console output rather than
+erroring out. Copy the value — GitLab only shows it once.
 
 ## Configuration
 
@@ -59,6 +63,7 @@ Set via environment variables (in `.env` or the shell):
 | `GITLAB_URL` | `https://gitlab.com` | GitLab API base URL |
 | `GITLAB_TOKEN` | — | Personal Access Token (required) |
 | `GITLAB_GROUP` | `audacy-inc` | Group path to scan for projects |
+| `GITLAB_INCLUDE_SHARED_RUNNERS` | `false` | Include GitLab-hosted shared runners (`runner_type=instance_type`) in runner health, alongside on-prem/self-managed ones |
 
 Everything else is a Python constant, kept next to the domain it configures
 so it's easy to find and edit:
@@ -133,7 +138,7 @@ history rows concatenate cleanly for trend charts.
 
 **`jobs`** — one row per (project, stage) within the sample: `stage`, `sampled`, `failures`, `failure_rate`, `top_failing_job`, `avg_duration_seconds`, `avg_queued_duration_seconds`.
 
-**`runners`** — one row per group runner: `runner_id`, `description`, `runner_type`, `status` (`online`/`offline`/`stale`/`never_contacted`), `paused`, `contacted_at`, `tags`, `avg_queued_duration_seconds` (proxy for queue time, averaged from jobs that ran on it).
+**`runners`** — one row per on-prem group runner (GitLab-hosted shared runners are excluded by default; see `GITLAB_INCLUDE_SHARED_RUNNERS`): `runner_id`, `description`, `runner_type` (`group_type`/`project_type`, or `instance_type` if shared runners are included), `is_shared`, `status` (`online`/`offline`/`stale`/`never_contacted`), `paused`, `contacted_at`, `tags`, `avg_queued_duration_seconds` (proxy for queue time, averaged from jobs that ran on it).
 
 **`merge_requests`** — one row per open MR: `mr_iid`, `title`, `source_branch`, `target_branch`, `author`, `created_at`, `updated_at`, `age_days`, `draft`, `detailed_merge_status`, `is_blocked` (anything but `mergeable`), `is_stale`, `web_url`.
 

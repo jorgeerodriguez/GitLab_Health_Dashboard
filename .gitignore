@@ -3,3 +3,8 @@
 __pycache__/
 *.pyc
 reports/
+*.DS_Store
+./gitlab_orion/__pycache__/
+/gitlab_orion/__pycache__/
+
+

@@ -3,7 +3,10 @@
 One worker task per project gathers pipelines + jobs + MRs + repo hygiene
 together (four collectors, but still just one pass over the project list),
 instead of four separate full scans across every project. Runners are
-group-level and collected once, outside this per-project loop.
+collected once, outside this per-project loop -- but that collection
+(see runners.py) still sweeps every project's runner list under its own
+thread pool, since group-level runner listing alone can miss project-
+registered runners.
 """
 
 import pandas as pd

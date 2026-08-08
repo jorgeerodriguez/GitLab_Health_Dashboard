@@ -7,11 +7,16 @@ palette (see the `dataviz` skill): a single hue for magnitude charts, fixed
 status colors (good/warning/serious/critical) only for genuine state
 (runner status, KPI accents) — never a rainbow, never color standing in
 for a legend a reader has to guess at.
+
+Each chart renders as its own full-width section (not a shared grid) so it
+reads bigger and can be copied or screenshotted one at a time — see the
+`.chart-section` / `.copy-btn` template markup below.
 """
 
 import base64
 import io
 from pathlib import Path
+from string import Template
 
 import matplotlib
 matplotlib.use("Agg")
@@ -66,7 +71,7 @@ def _fig_to_data_uri(fig) -> str:
 
 
 def _empty_chart(message: str) -> str:
-    fig, ax = plt.subplots(figsize=(6, 2.5))
+    fig, ax = plt.subplots(figsize=(8, 2.5))
     ax.axis("off")
     ax.text(0.5, 0.5, message, ha="center", va="center", color=MUTED_INK, fontsize=11)
     return _fig_to_data_uri(fig)
@@ -99,7 +104,7 @@ def success_rate_trend_chart(pipeline_history: pd.DataFrame) -> str:
             "run Orion again to start a trend line."
         )
 
-    fig, ax = plt.subplots(figsize=(9, 3.2))
+    fig, ax = plt.subplots(figsize=(13, 4.2))
     ax.plot(trend.index, trend.values, color=BLUE, linewidth=2, marker="o", markersize=8,
             markerfacecolor=BLUE, markeredgecolor=SURFACE, markeredgewidth=2)
     ax.set_ylim(0, 100)
@@ -125,7 +130,7 @@ def stage_failure_chart(jobs_df: pd.DataFrame) -> str:
     agg["failure_rate"] = (agg["failures"] / agg["sampled"] * 100).round(1)
     agg = agg.sort_values("failure_rate", ascending=True).tail(10)
 
-    fig, ax = plt.subplots(figsize=(9, max(2.5, 0.4 * len(agg))))
+    fig, ax = plt.subplots(figsize=(13, max(3, 0.55 * len(agg))))
     bars = ax.barh(agg.index, agg["failure_rate"], color=BLUE, height=0.6, zorder=3)
     for bar, value in zip(bars, agg["failure_rate"]):
         ax.text(bar.get_width() + 1, bar.get_y() + bar.get_height() / 2, f"{value:.1f}%",
@@ -144,8 +149,8 @@ def runner_status_chart(runners_df: pd.DataFrame) -> str:
     counts = runners_df["status"].fillna("unknown").value_counts()
     colors = [RUNNER_STATUS_COLOR.get(status, MUTED_INK) for status in counts.index]
 
-    fig, ax = plt.subplots(figsize=(6, 3.2))
-    bars = ax.bar(counts.index, counts.values, color=colors, width=0.6, zorder=3)
+    fig, ax = plt.subplots(figsize=(9, 4))
+    bars = ax.bar(counts.index, counts.values, color=colors, width=0.5, zorder=3)
     for bar, value in zip(bars, counts.values):
         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.05, str(value),
                 ha="center", color=PRIMARY_INK, fontsize=11, fontweight="bold")
@@ -160,7 +165,7 @@ def mr_age_histogram(mr_df: pd.DataFrame) -> str:
     if mr_df.empty:
         return _empty_chart("No open merge requests.")
 
-    fig, ax = plt.subplots(figsize=(9, 3))
+    fig, ax = plt.subplots(figsize=(13, 3.8))
     ax.hist(mr_df["age_days"], bins=min(20, max(5, mr_df["age_days"].nunique())),
             color=BLUE, edgecolor=SURFACE, linewidth=1, zorder=3)
     ax.set_xlabel("Days since last update")
@@ -179,7 +184,7 @@ def stale_branch_chart(branches_df: pd.DataFrame) -> str:
         return _empty_chart("No stale branches found.")
 
     counts = stale.groupby("project_path").size().sort_values(ascending=True).tail(15)
-    fig, ax = plt.subplots(figsize=(9, max(2.5, 0.35 * len(counts))))
+    fig, ax = plt.subplots(figsize=(13, max(3, 0.45 * len(counts))))
     bars = ax.barh(counts.index, counts.values, color=ORANGE, height=0.6, zorder=3)
     for bar, value in zip(bars, counts.values):
         ax.text(bar.get_width() + 0.1, bar.get_y() + bar.get_height() / 2, str(value),
@@ -240,6 +245,21 @@ def _table_html(df: pd.DataFrame, columns: list[str], empty_message: str, max_ro
     return f'<table><thead><tr>{header}</tr></thead><tbody>{rows}</tbody></table>'
 
 
+def _chart_section(section_id: str, title: str, data_uri: str, alt: str) -> str:
+    """One independent, full-width chart block with its own 'Copy image' button."""
+    img_id = f"{section_id}-img"
+    return f"""
+  <section class="chart-section">
+    <div class="card">
+      <div class="chart-header">
+        <h2>{title}</h2>
+        <button type="button" class="copy-btn" onclick="copyChartImage(this, '{img_id}')">Copy image</button>
+      </div>
+      <img id="{img_id}" src="{data_uri}" alt="{alt}">
+    </div>
+  </section>"""
+
+
 def build_dashboard_html(latest: dict, history: dict, out_path: Path, group_path: str, snapshot_at):
     """Assemble the full leadership dashboard and write it to out_path."""
     kpi_html = _build_kpi_tiles(latest)
@@ -249,6 +269,14 @@ def build_dashboard_html(latest: dict, history: dict, out_path: Path, group_path
     runner_chart = runner_status_chart(latest["runners"])
     mr_chart = mr_age_histogram(latest["merge_requests"])
     branch_chart = stale_branch_chart(latest["branches"])
+
+    charts_html = "\n".join([
+        _chart_section("trend-chart", "Pipeline success rate over time", trend_chart, "Pipeline success rate trend"),
+        _chart_section("stage-chart", "Failure rate by CI stage", stage_chart, "Failure rate by stage"),
+        _chart_section("runner-chart", "Runner status", runner_chart, "Runner status breakdown"),
+        _chart_section("mr-chart", "Open MR age", mr_chart, "Open merge request age distribution"),
+        _chart_section("branch-chart", "Stale branches by project", branch_chart, "Stale branch count by project"),
+    ])
 
     unhealthy = latest["pipelines"][latest["pipelines"]["category"] == "unhealthy"].sort_values("success_rate")
     unhealthy_table = _table_html(
@@ -263,101 +291,112 @@ def build_dashboard_html(latest: dict, history: dict, out_path: Path, group_path
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(_TEMPLATE.format(
+    out_path.write_text(_TEMPLATE.substitute(
         group_path=group_path,
         generated_at=snapshot_at.strftime("%Y-%m-%d %H:%M UTC"),
         kpi_html=kpi_html,
-        trend_chart=trend_chart,
-        stage_chart=stage_chart,
-        runner_chart=runner_chart,
-        mr_chart=mr_chart,
-        branch_chart=branch_chart,
+        charts_html=charts_html,
         unhealthy_table=unhealthy_table,
         drift_table=drift_table,
     ))
     print(f"Wrote dashboard to {out_path}")
 
 
-_TEMPLATE = """<!doctype html>
+# Uses string.Template ($var, not {var}) rather than str.format -- the CSS
+# and JS below are full of literal braces, and format() would need every
+# single one doubled to escape them. $-substitution sidesteps that entirely.
+_TEMPLATE = Template("""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>GitLab Orion — {group_path}</title>
+<title>GitLab Orion — $group_path</title>
 <style>
-  :root {{
+  :root {
     color-scheme: light dark;
     --surface: #fcfcfb; --page: #f9f9f7; --ink: #0b0b0b; --ink-2: #52514e;
     --muted: #898781; --border: rgba(11,11,11,0.10);
-  }}
-  @media (prefers-color-scheme: dark) {{
-    :root {{ --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff; --ink-2: #c3c2b7; --border: rgba(255,255,255,0.10); }}
-  }}
-  * {{ box-sizing: border-box; }}
-  body {{
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --surface: #1a1a19; --page: #0d0d0d; --ink: #ffffff; --ink-2: #c3c2b7; --border: rgba(255,255,255,0.10); }
+  }
+  * { box-sizing: border-box; }
+  body {
     margin: 0; padding: 32px; background: var(--page); color: var(--ink);
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  }}
-  h1 {{ font-size: 22px; margin: 0 0 4px; }}
-  .subtitle {{ color: var(--ink-2); margin: 0 0 28px; font-size: 14px; }}
-  .kpi-row {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 32px; }}
-  .kpi-tile {{
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--ink-2); margin: 0 0 28px; font-size: 14px; }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 32px; }
+  .kpi-tile {
     background: var(--surface); border: 1px solid var(--border); border-left: 4px solid;
     border-radius: 8px; padding: 14px 16px;
-  }}
-  .kpi-label {{ font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }}
-  .kpi-value {{ font-size: 26px; font-weight: 600; color: var(--ink); }}
-  .charts {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; margin-bottom: 32px; }}
-  .card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; }}
-  .card h2 {{ font-size: 15px; margin: 0 0 12px; color: var(--ink); }}
-  .card img {{ max-width: 100%; height: auto; display: block; }}
-  table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
-  th, td {{ text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }}
-  th {{ color: var(--ink-2); font-weight: 600; }}
-  .empty-note {{ color: var(--muted); font-size: 13px; }}
-  section {{ margin-bottom: 32px; }}
-  section h2 {{ font-size: 16px; margin: 0 0 12px; }}
+  }
+  .kpi-label { font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }
+  .kpi-value { font-size: 26px; font-weight: 600; color: var(--ink); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; }
+  .card img { max-width: 100%; height: auto; display: block; }
+  .chart-section { margin-bottom: 24px; }
+  .chart-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .chart-header h2 { font-size: 15px; margin: 0; color: var(--ink); }
+  .copy-btn {
+    flex: none; font-size: 12px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--ink-2); cursor: pointer; white-space: nowrap;
+  }
+  .copy-btn:hover { color: var(--ink); border-color: var(--ink-2); }
+  .copy-btn.is-copied { color: #0ca30c; border-color: #0ca30c; }
+  .copy-btn.is-failed { color: #d03b3b; border-color: #d03b3b; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th { color: var(--ink-2); font-weight: 600; }
+  .empty-note { color: var(--muted); font-size: 13px; }
+  section { margin-bottom: 32px; }
+  section h2 { font-size: 16px; margin: 0 0 12px; }
 </style>
 </head>
 <body>
-  <h1>GitLab Orion — {group_path}</h1>
-  <p class="subtitle">Generated {generated_at}</p>
+  <h1>GitLab Orion — $group_path</h1>
+  <p class="subtitle">Generated $generated_at</p>
 
   <div class="kpi-row">
-{kpi_html}
+$kpi_html
   </div>
 
-  <div class="charts">
-    <div class="card">
-      <h2>Pipeline success rate over time</h2>
-      <img src="{trend_chart}" alt="Pipeline success rate trend">
-    </div>
-    <div class="card">
-      <h2>Failure rate by CI stage</h2>
-      <img src="{stage_chart}" alt="Failure rate by stage">
-    </div>
-    <div class="card">
-      <h2>Runner status</h2>
-      <img src="{runner_chart}" alt="Runner status breakdown">
-    </div>
-    <div class="card">
-      <h2>Open MR age</h2>
-      <img src="{mr_chart}" alt="Open merge request age distribution">
-    </div>
-    <div class="card">
-      <h2>Stale branches by project</h2>
-      <img src="{branch_chart}" alt="Stale branch count by project">
-    </div>
-  </div>
+$charts_html
 
   <section>
     <h2>Unhealthy projects</h2>
-    <div class="card">{unhealthy_table}</div>
+    <div class="card">$unhealthy_table</div>
   </section>
 
   <section>
     <h2>Branch-protection policy violations</h2>
-    <div class="card">{drift_table}</div>
+    <div class="card">$drift_table</div>
   </section>
+
+<script>
+async function copyChartImage(btn, imgId) {
+  const img = document.getElementById(imgId);
+  const original = btn.textContent;
+  btn.classList.remove('is-copied', 'is-failed');
+  try {
+    const response = await fetch(img.src);
+    const blob = await response.blob();
+    if (!navigator.clipboard || !window.ClipboardItem) {
+      throw new Error('Clipboard API unavailable');
+    }
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+    btn.textContent = 'Copied!';
+    btn.classList.add('is-copied');
+  } catch (err) {
+    btn.textContent = 'Right-click image \\u2192 Copy';
+    btn.classList.add('is-failed');
+  }
+  setTimeout(() => {
+    btn.textContent = original;
+    btn.classList.remove('is-copied', 'is-failed');
+  }, 2000);
+}
+</script>
 </body>
 </html>
-"""
+""")

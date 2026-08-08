@@ -22,8 +22,11 @@ Each run:
      `stale_mr_days`) or blocked from merging.
    - **Repo hygiene** — stale branches (no commit in `stale_branch_days`)
      and protected-branch policy drift on the default branch.
-4. Once, at the group level: **runner health** (online/offline/stale),
-   with per-runner average job queue time.
+4. Once: **runner health** (online/offline/stale), with per-runner average
+   job queue time. Merges a group-level runner listing with a per-project
+   sweep across every project in the group, since on-prem runners
+   registered directly to a project aren't visible from the group call
+   alone — see [Runner health](#runner-health) below.
 5. Appends this run's snapshot to a local Parquet history store, so success
    rate / duration / stale-MR trends build up as you run Orion repeatedly.
 6. Writes CSV + JSON reports per domain and builds `reports/dashboard.html`.
@@ -46,13 +49,10 @@ GITLAB_TOKEN=your-personal-access-token-here
 To create a token: on GitLab, go to **Avatar → Edit profile → Access Tokens**
 (`https://gitlab.com/-/user_settings/personal_access_tokens`). Give it a name,
 an expiration date, and the `read_api` scope (`read_repository` too if you'll
-need repo contents later). The token needs at least **Reporter** access on
-the group to list its runners; **Developer**+ gets you MR/merge-status
-detail. Runner listing at the *project* level (needed to catch on-prem
-runners registered directly to a project rather than the group — see
-`runners.py`) requires **Maintainer**+ on that project; projects where the
-token falls short are skipped and counted in the console output rather than
-erroring out. Copy the value — GitLab only shows it once.
+need repo contents later). **Developer**+ on the group gets you MR/merge-status
+detail; runner listing has its own, higher permission floor — see
+[Runner health](#runner-health) below. Copy the token value — GitLab only
+shows it once.
 
 ## Configuration
 
@@ -92,7 +92,7 @@ summaries, and write to `reports/`:
 - `pipelines.csv` / `.json` — every project's pipeline health (see schema below).
 - `pipelines_by_branch.csv` / `.json` — pipeline success/failure counts per branch.
 - `jobs.csv` / `.json` — failure rate, worst job, avg duration/queue time per stage.
-- `runners.csv` / `.json` — one row per group runner.
+- `runners.csv` / `.json` — one row per on-prem runner (see [Runner health](#runner-health)).
 - `merge_requests.csv` / `.json` — one row per open MR.
 - `branches.csv` / `.json` — one row per non-default branch.
 - `protection_drift.csv` / `.json` — one row per project's default-branch policy check.
@@ -100,7 +100,12 @@ summaries, and write to `reports/`:
   (append-only, deduped; this is what powers the trend chart).
 - `dashboard.html` — **open this in a browser.** Self-contained (charts are
   base64-embedded PNGs, no internet needed), safe to email or drop in a
-  shared drive.
+  shared drive. Each chart renders as its own full-width section (not a
+  packed grid) so it's legible at a larger size, and has a **Copy image**
+  button that puts the PNG straight on the clipboard for pasting into a
+  deck, doc, or chat — no cropping a grid screenshot required. If the
+  browser blocks clipboard access (some `file://` contexts do), the button
+  falls back to prompting a right-click copy instead.
 
 > Previous versions of this script wrote `pipeline_health_detail.csv` /
 > `pipeline_health_unhealthy*.csv`. Those filenames are gone — the pipeline
@@ -138,13 +143,37 @@ history rows concatenate cleanly for trend charts.
 
 **`jobs`** — one row per (project, stage) within the sample: `stage`, `sampled`, `failures`, `failure_rate`, `top_failing_job`, `avg_duration_seconds`, `avg_queued_duration_seconds`.
 
-**`runners`** — one row per on-prem group runner (GitLab-hosted shared runners are excluded by default; see `GITLAB_INCLUDE_SHARED_RUNNERS`): `runner_id`, `description`, `runner_type` (`group_type`/`project_type`, or `instance_type` if shared runners are included), `is_shared`, `status` (`online`/`offline`/`stale`/`never_contacted`), `paused`, `contacted_at`, `tags`, `avg_queued_duration_seconds` (proxy for queue time, averaged from jobs that ran on it).
+**`runners`** — one row per on-prem runner visible at the group or project level (GitLab-hosted shared runners are excluded by default; see [Runner health](#runner-health)): `runner_id`, `description`, `runner_type` (`group_type`/`project_type`, or `instance_type` if shared runners are included), `is_shared`, `status` (`online`/`offline`/`stale`/`never_contacted`), `paused`, `contacted_at`, `tags`, `avg_queued_duration_seconds` (proxy for queue time, averaged from jobs that ran on it).
 
 **`merge_requests`** — one row per open MR: `mr_iid`, `title`, `source_branch`, `target_branch`, `author`, `created_at`, `updated_at`, `age_days`, `draft`, `detailed_merge_status`, `is_blocked` (anything but `mergeable`), `is_stale`, `web_url`.
 
 **`branches`** — one row per non-default branch: `branch`, `last_commit_at`, `age_days`, `is_stale`, `merged`, `protected`.
 
 **`protection_drift`** — one row per project: `default_branch`, `is_protected`, `allow_force_push`, `code_owner_approval_required`, `violations` (comma-joined list of the policy fields that don't match `BRANCH_PROTECTION_POLICY`).
+
+## Runner health
+
+This org runs on GitLab SaaS (gitlab.com) but executes jobs on its own
+self-managed, on-prem runners rather than GitLab's shared/hosted fleet.
+GitLab has two runner-listing endpoints with different scope and different
+permission floors, so `runners.py` calls both and merges the results
+(deduped by `runner_id`):
+
+| Call | Scope | Requires | Notes |
+|---|---|---|---|
+| `group.runners.list()` | Runners registered to the group, its ancestor groups, and any GitLab-hosted shared runner made available to it | **Owner or Auditor** on the group | Most scanning tokens are Reporter/Developer, so a `403` here is expected — printed as an informational line, not an error |
+| `project.runners.list()` (swept across every project in the group) | Everything the group call returns, *plus* runners registered directly to that project (`runner_type=project_type`) | **Maintainer**+ on the project | The one that actually matters, since it's a superset. Projects where the token falls short are skipped and counted (`Skipped project-level runner listing for N project(s)...`), not retried into the ground |
+
+Because the project-level call is a superset, a 403 on the group call alone
+is harmless — you'll still get full runner coverage as long as the token
+has Maintainer+ on (most of) the group's projects. If runner counts still
+look short, check the console output for that "Skipped project-level..."
+line and raise the token's role on the affected projects.
+
+GitLab-hosted shared runners (`runner_type=instance_type`) are excluded
+from `runners.csv`/the dashboard by default — an `instance_type` runner
+going offline is GitLab's outage, not one this dashboard can act on. Set
+`GITLAB_INCLUDE_SHARED_RUNNERS=true` to include them anyway.
 
 ## Filtering by date
 
@@ -166,11 +195,11 @@ gitlab_orion/
     jobs.py               job/stage-level failure attribution
     merge_requests.py     MR/merge health
     repo_hygiene.py       stale branches + protected-branch drift
-    runners.py            group runner health (queue time proxied from jobs.py)
-    snapshot.py           per-project worker + DataFrame assembly
-    history.py            Parquet snapshot store (reports/history/)
-    reports.py            CSV/JSON writers
-    dashboard.py          matplotlib charts -> self-contained HTML
+    runners.py             runner health: group + per-project listing, merged (see "Runner health")
+    snapshot.py            per-project worker + DataFrame assembly
+    history.py             Parquet snapshot store (reports/history/)
+    reports.py             CSV/JSON writers
+    dashboard.py           matplotlib charts -> self-contained HTML (independent, copyable chart sections)
 GitLab_Orion.py           CLI entrypoint / orchestrator
 ```
 
@@ -178,19 +207,21 @@ GitLab_Orion.py           CLI entrypoint / orchestrator
 that task now gathers pipelines + jobs + MRs + repo hygiene together
 (4 collectors per project, called from `snapshot.collect_project_snapshot`)
 rather than four separate full passes over every project. Runners are
-group-scoped and collected once, outside that loop.
+collected once, outside that loop, but under their own thread pool that
+also sweeps every project (see [Runner health](#runner-health)).
 
 ## Notes
 
 - **API cost**: roughly 5 calls per project per run (pipeline list + 1
   detail call, jobs list, branches list, protected-branches list, MRs
-  list), plus one detail call per group runner. For ~190 projects that's
-  ~1,000 calls/run — tune `sample_size` / `job_sample_size` /
-  `mr_sample_size` / `max_workers` in `generate_reports()` if that's too
-  slow or you're hitting rate limits.
-- **Runner listing requires only Reporter+ on the group** — it
-  deliberately uses `group.runners.list()`, not `gl.runners_all` (which is
-  instance-admin-only and will 403 for a normal PAT).
+  list), plus one runner-list call per project and one detail call per
+  runner found. For ~190 projects that's roughly ~1,200 calls/run — tune
+  `sample_size` / `job_sample_size` / `mr_sample_size` / `max_workers` in
+  `generate_reports()` if that's too slow or you're hitting rate limits.
+- **Runner listing avoids `gl.runners_all`** (`/runners/all`) entirely —
+  that endpoint is instance-admin-only, and on GitLab SaaS nobody outside
+  GitLab staff holds that role. See [Runner health](#runner-health) for
+  which endpoints are used instead and what permissions they need.
 - **`BRANCH_PROTECTION_POLICY` is a local standard, not a GitLab concept**
   — GitLab doesn't have a "compliance" API; drift detection just diffs
   each project's default-branch protection against the constant in
@@ -203,4 +234,7 @@ group-scoped and collected once, outside that loop.
   project talks to GitLab directly via its REST API through the
   [python-gitlab](https://python-gitlab.readthedocs.io/) SDK.
 - Charts in `dashboard.html` are matplotlib PNGs embedded as base64 data
-  URIs — no network/CDN dependency, safe to open offline.
+  URIs — no network/CDN dependency, safe to open offline. Each renders as
+  its own full-width section with a **Copy image** button (Clipboard API,
+  falls back to a right-click prompt if the browser blocks it), rather than
+  a packed grid — see `dashboard.py`.

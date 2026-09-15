@@ -11,4 +11,5 @@ python-gitlab==8.5.0
 requests==2.34.2
 requests-toolbelt==1.0.0
 six==1.17.0
+streamlit==1.49.1
 urllib3==2.7.0

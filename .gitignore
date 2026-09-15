@@ -7,3 +7,7 @@ reports/
 ./gitlab_orion/__pycache__/
 /gitlab_orion/__pycache__/
 __pycache__/*.*
+*.csv
+*.log
+*.xlsx
+*.json

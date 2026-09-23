@@ -4,7 +4,7 @@ idna==3.18
 matplotlib==3.11.1
 numpy==2.5.1
 pandas==3.0.5
-pyarrow==25.0.0
+pyarrow==25.0.1
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 python-gitlab==8.5.0
@@ -12,5 +12,5 @@ requests==2.34.2
 requests-toolbelt==1.0.0
 scikit-learn==1.9.1
 six==1.17.0
-streamlit==1.49.1
+streamlit==1.64.0
 urllib3==2.7.0

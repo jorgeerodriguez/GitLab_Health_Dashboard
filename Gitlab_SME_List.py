@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gitlab_sme_finder.py - Identify Subject Matter Experts (SMEs) from GitLab activity.
+Gitlab_SME_List.py - Identify Subject Matter Experts (SMEs) from GitLab activity.
  
 How it works
 ------------
@@ -26,20 +26,20 @@ Usage
   export GITLAB_TOKEN=glpat-xxxx            # read_api scope is enough
  
   # 1) collect (cache to JSON)
-  python gitlab_sme_finder.py collect --group platform-eng --since-days 365 --deep
-  python gitlab_sme_finder.py collect --projects 123,infra/terraform-gcp
+ 
+  python Gitlab_SME_List.py collect --projects 123,infra/terraform-gcp
  
   # 2) query SMEs
-  python gitlab_sme_finder.py sme --project infra/terraform-gcp
-  python gitlab_sme_finder.py sme --topic terraform --topic gke --top 5
-  python gitlab_sme_finder.py sme --keyword "helm" --format markdown
+  python Gitlab_SME_List.py sme --project infra/terraform-gcp --since-days 365 --deep
+  python Gitlab_SME_List.py sme --topic terraform --topic gke --top 5
+  python Gitlab_SME_List.py sme --keyword "helm" --format markdown
  
   # 3) full report of every project + topic
-  python gitlab_sme_finder.py report --out sme_report.md
-  python gitlab_sme_finder.py report --format csv --out sme_report.csv
+  python Gitlab_SME_List.py report --out sme_report.md
+  python Gitlab_SME_List.py report --format csv --out sme_report.csv
  
   # try it without GitLab
-  python gitlab_sme_finder.py demo
+  python Gitlab_SME_List.py demo
  
 Requires: Python 3.9+, requests
 """
@@ -268,6 +268,8 @@ class Collector:
     # -- project discovery --
     def list_projects(self, group: str | None, projects: list[str]) -> list[dict]:
         result = []
+        group = (group or "").strip("/")  # "a/b/" -> "a/b"; a trailing slash 404s
+        projects = [p.strip("/") for p in projects]
         if group:
             result += list(self.gl.paginate(
                 f"/groups/{quote(group, safe='')}/projects",
@@ -773,5 +775,11 @@ def main(argv=None):
  
  
 if __name__ == "__main__":
+    print("GitLab Orion is running...")
+    ok = test_connection()
+    if not ok:
+        sys.exit(1)
+
+    print("GitLab Orion connection test passed.")
     main()
  

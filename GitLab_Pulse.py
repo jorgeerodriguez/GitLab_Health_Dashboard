@@ -1,7 +1,7 @@
 #############
-# GitLab Orion #
+# GitLab Pulse #
 #############
-"""CLI entrypoint. Domain logic lives in the gitlab_orion/ package:
+"""CLI entrypoint. Domain logic lives in the gitlab_pulse/ package:
 
 - client.py            auth, retries, project/group listing
 - pipelines.py          pipeline health (status, duration, branch failure rate)
@@ -22,15 +22,15 @@ from pathlib import Path
 import pandas as pd
 from dotenv import load_dotenv
 
-from gitlab_orion.client import DEFAULT_GROUP, get_group, list_group_projects, get_gitlab_client, test_connection
-from gitlab_orion.dashboard import build_dashboard_html
-from gitlab_orion.history import append_snapshot
-from gitlab_orion.merge_requests import MR_SAMPLE_SIZE, STALE_MR_DAYS
-from gitlab_orion.pipelines import filter_recent_unhealthy
-from gitlab_orion.repo_hygiene import STALE_BRANCH_DAYS
-from gitlab_orion.reports import write_reports
-from gitlab_orion.runners import fetch_runner_metrics
-from gitlab_orion.snapshot import build_snapshot_dataframes, collect_project_snapshot
+from gitlab_pulse.client import DEFAULT_GROUP, get_group, list_group_projects, get_gitlab_client, test_connection
+from gitlab_pulse.dashboard import build_dashboard_html
+from gitlab_pulse.history import append_snapshot
+from gitlab_pulse.merge_requests import MR_SAMPLE_SIZE, STALE_MR_DAYS
+from gitlab_pulse.pipelines import filter_recent_unhealthy
+from gitlab_pulse.repo_hygiene import STALE_BRANCH_DAYS
+from gitlab_pulse.reports import write_reports
+from gitlab_pulse.runners import fetch_runner_metrics
+from gitlab_pulse.snapshot import build_snapshot_dataframes, collect_project_snapshot
 
 load_dotenv()
 
@@ -166,7 +166,7 @@ def generate_reports(
 
 
 def main():
-    print("GitLab Orion is running...")
+    print("GitLab Pulse is running...")
     ok = test_connection()
     if not ok:
         sys.exit(1)

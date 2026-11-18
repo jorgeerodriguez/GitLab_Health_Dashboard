@@ -88,7 +88,7 @@ def _style_axes(ax):
 def success_rate_trend_chart(pipeline_history: pd.DataFrame) -> str:
     """Mean pipeline success rate over time — the real trend, built up run over run."""
     if pipeline_history.empty:
-        return _empty_chart("No history yet — run Orion again to start a trend line.")
+        return _empty_chart("No history yet — run Pulse again to start a trend line.")
 
     trend = (
         pipeline_history.dropna(subset=["success_rate"])
@@ -101,7 +101,7 @@ def success_rate_trend_chart(pipeline_history: pd.DataFrame) -> str:
     if len(trend) == 1:
         return _empty_chart(
             f"Only one snapshot so far ({trend.index[0]:%Y-%m-%d}) — "
-            "run Orion again to start a trend line."
+            "run Pulse again to start a trend line."
         )
 
     fig, ax = plt.subplots(figsize=(13, 4.2))
@@ -309,7 +309,7 @@ _TEMPLATE = Template("""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>GitLab Orion — $group_path</title>
+<title>GitLab Pulse — $group_path</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -354,7 +354,7 @@ _TEMPLATE = Template("""<!doctype html>
 </style>
 </head>
 <body>
-  <h1>GitLab Orion — $group_path</h1>
+  <h1>GitLab Pulse — $group_path</h1>
   <p class="subtitle">Generated $generated_at</p>
 
   <div class="kpi-row">

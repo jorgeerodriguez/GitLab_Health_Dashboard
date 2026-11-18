@@ -4,12 +4,13 @@ __pycache__/
 *.pyc
 reports/
 *.DS_Store
-./gitlab_orion/__pycache__/
-/gitlab_orion/__pycache__/
+./gitlab_pulse/__pycache__/
+/gitlab_pulse/__pycache__/
 __pycache__/*.*
 *.csv
 *.log
 *.xlsx
 *.json
-/gitlab_orion/__pycache__/
+/gitlab_pulse/__pycache__/
 
+*.pdf

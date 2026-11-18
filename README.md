@@ -1,4 +1,4 @@
-# GitLab Orion
+# GitLab Pulse
 
 A CI/CD + repo health monitor for a GitLab group: pipeline health, job/stage
 failure attribution, runner health, MR/merge health, and repo hygiene — all
@@ -28,7 +28,7 @@ Each run:
    registered directly to a project aren't visible from the group call
    alone — see [Runner health](#runner-health) below.
 5. Appends this run's snapshot to a local Parquet history store, so success
-   rate / duration / stale-MR trends build up as you run Orion repeatedly.
+   rate / duration / stale-MR trends build up as you run Pulse repeatedly.
 6. Writes CSV + JSON reports per domain and builds `reports/dashboard.html`.
 
 ## Setup
@@ -70,20 +70,20 @@ so it's easy to find and edit:
 
 | Constant | File | Default | Meaning |
 |---|---|---|---|
-| `UNHEALTHY_SUCCESS_RATE_THRESHOLD` | `gitlab_orion/pipelines.py` | `70.0` | Below this % success rate, a project is "unhealthy" |
-| `STALE_MR_DAYS` | `gitlab_orion/merge_requests.py` | `14` | Open MR with no update in this many days is "stale" |
-| `MR_SAMPLE_SIZE` | `gitlab_orion/merge_requests.py` | `50` | Max open MRs sampled per project (oldest-updated first) |
-| `STALE_BRANCH_DAYS` | `gitlab_orion/repo_hygiene.py` | `90` | Branch with no commit in this many days is "stale" |
-| `BRANCH_PROTECTION_POLICY` | `gitlab_orion/repo_hygiene.py` | protected, no force-push, code-owner approval required | The policy each project's default branch is compared against — GitLab has no native "policy compliance" concept, so this is a local standard you should tune to your org's actual rules |
+| `UNHEALTHY_SUCCESS_RATE_THRESHOLD` | `gitlab_pulse/pipelines.py` | `70.0` | Below this % success rate, a project is "unhealthy" |
+| `STALE_MR_DAYS` | `gitlab_pulse/merge_requests.py` | `14` | Open MR with no update in this many days is "stale" |
+| `MR_SAMPLE_SIZE` | `gitlab_pulse/merge_requests.py` | `50` | Max open MRs sampled per project (oldest-updated first) |
+| `STALE_BRANCH_DAYS` | `gitlab_pulse/repo_hygiene.py` | `90` | Branch with no commit in this many days is "stale" |
+| `BRANCH_PROTECTION_POLICY` | `gitlab_pulse/repo_hygiene.py` | protected, no force-push, code-owner approval required | The policy each project's default branch is compared against — GitLab has no native "policy compliance" concept, so this is a local standard you should tune to your org's actual rules |
 
-`generate_reports()` in `GitLab_Orion.py` also takes `sample_size`,
+`generate_reports()` in `GitLab_Pulse.py` also takes `sample_size`,
 `job_sample_size`, `max_workers`, and `recent_days` as keyword args if you
 want to call it directly instead of via `main()`.
 
 ## Usage
 
 ```bash
-.venv/bin/python GitLab_Orion.py
+.venv/bin/python GitLab_Pulse.py
 ```
 
 This will verify the connection, scan `GITLAB_GROUP`, print console
@@ -181,15 +181,15 @@ Every datetime column (`last_run_at`, `updated_at`, `contacted_at`,
 `snapshot_at`, ...) is a real timezone-aware `pandas.Timestamp` (UTC), not
 a string — parsed as soon as it comes back from GitLab, so it can be
 compared/filtered directly, and only rendered to an ISO 8601 string at
-write time (`reports.py`). `gitlab_orion/pipelines.py` has
+write time (`reports.py`). `gitlab_pulse/pipelines.py` has
 `filter_recent_unhealthy(pipelines_df, days=7, now=None)`, used by
-`GitLab_Orion.py` to print/report the last-7-days unhealthy subset
+`GitLab_Pulse.py` to print/report the last-7-days unhealthy subset
 alongside the full unhealthy table.
 
 ## Architecture
 
 ```
-gitlab_orion/
+gitlab_pulse/
     client.py            auth, retries, group/project listing
     pipelines.py         pipeline health + failure rate by branch
     jobs.py               job/stage-level failure attribution
@@ -200,10 +200,10 @@ gitlab_orion/
     history.py             Parquet snapshot store (reports/history/)
     reports.py             CSV/JSON writers
     dashboard.py           matplotlib charts -> self-contained HTML (independent, copyable chart sections)
-GitLab_Orion.py           CLI entrypoint / orchestrator
+GitLab_Pulse.py           CLI entrypoint / orchestrator
 ```
 
-`GitLab_Orion.py` still runs one `ThreadPoolExecutor` task per project —
+`GitLab_Pulse.py` still runs one `ThreadPoolExecutor` task per project —
 that task now gathers pipelines + jobs + MRs + repo hygiene together
 (4 collectors per project, called from `snapshot.collect_project_snapshot`)
 rather than four separate full passes over every project. Runners are
@@ -230,8 +230,7 @@ also sweeps every project (see [Runner health](#runner-health)).
   (the list endpoint doesn't include it, and fetching it for every sampled
   pipeline would multiply the API cost) — duration *trend* comes from the
   history store across repeated runs, not from one big historical pull.
-- There is no official or third-party "Orion" MCP server for GitLab — this
-  project talks to GitLab directly via its REST API through the
+- This project does not use an MCP server — it talks to GitLab directly via its REST API through the
   [python-gitlab](https://python-gitlab.readthedocs.io/) SDK.
 - Charts in `dashboard.html` are matplotlib PNGs embedded as base64 data
   URIs — no network/CDN dependency, safe to open offline. Each renders as

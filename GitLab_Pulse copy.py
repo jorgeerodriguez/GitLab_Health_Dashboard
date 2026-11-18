@@ -1,5 +1,5 @@
 #############
-# GitLab Orion #
+# GitLab Pulse #
 #############
 
 import csv
@@ -303,7 +303,7 @@ def generate_reports(group_path: str = DEFAULT_GROUP, sample_size: int = 20, max
 
 
 def main():
-    print("GitLab Orion is running...")
+    print("GitLab Pulse is running...")
     ok = test_connection()
     if not ok:
         sys.exit(1)

@@ -51,7 +51,7 @@ from dotenv import load_dotenv
 import gitlab
 from gitlab.exceptions import GitlabError
 
-from gitlab_orion.client import DEFAULT_GROUP, get_group, list_group_projects, get_gitlab_client, test_connection
+from gitlab_pulse.client import DEFAULT_GROUP, get_group, list_group_projects, get_gitlab_client, test_connection
 
 
 load_dotenv()
@@ -484,11 +484,11 @@ def main() -> int:
  
  
 if __name__ == "__main__":
-    print("GitLab Orion is running...")
+    print("GitLab Pulse is running...")
     ok = test_connection()
     if not ok:
         sys.exit(1)
 
-    print("GitLab Orion connection test passed.")
+    print("GitLab Pulse connection test passed.")
     sys.exit(main())
  
